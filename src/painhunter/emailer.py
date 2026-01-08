@@ -50,6 +50,7 @@ OPPORTUNITY_TEMPLATE = """
         <h3>MVP Suggestions:</h3>
         {mvp_list}
         <p class="meta" style="margin-top: 15px;">Source: {sources}</p>
+        <p class="meta" style="margin-top: 5px;">Links: {links}</p>
     </div>
 """
 
@@ -64,7 +65,24 @@ def format_opportunities_html(opportunities: List[Dict]) -> str:
         mvp_html = "".join(
             f'<div class="mvp">• {idea}</div>' for idea in opp.get("mvp_suggestions", [])
         )
-        sources = ", ".join(opp.get("source_posts", [])[:3])
+        
+        # Get sources (titles)
+        source_posts = opp.get("source_posts", [])
+        sources = ", ".join(source_posts[:3])
+        
+        # Get links from source_posts_with_links if available
+        source_links = opp.get("source_posts_with_links", [])
+        if source_links:
+            # Format links as HTML anchor tags
+            link_htmls = []
+            for item in source_links[:3]:
+                if isinstance(item, dict) and item.get("link"):
+                    title = item.get("title", "查看原文")
+                    link_htmls.append(f'<a href="{item["link"]}" style="color: #2563eb; text-decoration: none; margin-right: 10px;">{title}</a>')
+            links = " ".join(link_htmls) if link_htmls else "暂无链接"
+        else:
+            # Fallback: no links available
+            links = "暂无链接"
 
         html_parts.append(
             OPPORTUNITY_TEMPLATE.format(
@@ -73,6 +91,7 @@ def format_opportunities_html(opportunities: List[Dict]) -> str:
                 score=opp.get("business_value_score", 0),
                 mvp_list=mvp_html,
                 sources=sources,
+                links=links,
             )
         )
 

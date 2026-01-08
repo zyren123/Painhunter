@@ -113,6 +113,30 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
         print(f"解析 LLM 响应时出错: {e}")
         result = {"raw_response": content if 'content' in dir() else "", "opportunities": []}
 
+    # Add source post links by matching titles
+    # Create a title-to-link mapping from original posts
+    title_to_link = {post['title']: post['link'] for post in posts}
+    
+    # Add links to each opportunity's source posts
+    for opp in result.get("opportunities", []):
+        source_posts = opp.get("source_posts", [])
+        source_links = []
+        for title in source_posts:
+            # Try exact match first
+            link = title_to_link.get(title)
+            if link:
+                source_links.append({"title": title, "link": link})
+            else:
+                # Try fuzzy match (case-insensitive, partial match)
+                for post_title, post_link in title_to_link.items():
+                    if title.lower() in post_title.lower() or post_title.lower() in title.lower():
+                        source_links.append({"title": title, "link": post_link})
+                        break
+                else:
+                    # If no match found, still add title but without link
+                    source_links.append({"title": title, "link": None})
+        opp["source_posts_with_links"] = source_links
+
     return result
 
 
