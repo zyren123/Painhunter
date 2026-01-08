@@ -91,7 +91,6 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
 
     response = client.chat.completions.create(
         model=model,
-        max_tokens=4096,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
