@@ -76,8 +76,8 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
     if not api_key:
         raise ValueError("OPENAI_API_KEY not set in environment")
 
-    base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    model = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
