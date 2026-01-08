@@ -36,13 +36,14 @@ jobs:
           # LLM Configuration (required)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
 
           # Email Configuration (optional - comment out if not using email)
-          # SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          # SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          # SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          # SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          # TO_EMAILS: ${{ secrets.TO_EMAILS }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          TO_EMAILS: ${{ secrets.TO_EMAILS }}
         run: uv run python main.py
 
       - name: Upload report artifact
