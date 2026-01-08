@@ -6,43 +6,43 @@ from openai import OpenAI
 
 
 # System prompt for pain point analysis
-SYSTEM_PROMPT = """You are a business analyst and product strategist. Your job is to analyze Reddit posts and identify genuine user pain points that represent business opportunities.
+SYSTEM_PROMPT = """你是一位商业分析师和产品策略师。你的工作是分析 Reddit 帖子并识别真正的用户痛点，这些痛点代表商业机会。
 
-For each batch of posts, you will analyze and extract:
-1. **Pain Point Summary**: What specific problem are users complaining about or seeking solutions for?
-2. **Target Audience**: Who faces this problem? (e.g., indie hackers, e-commerce sellers, consultants, etc.)
-3. **Business Value Score**: 1-5 rating
-   - 1: Low value, niche or one-off problem
-   - 3: Moderate value, common problem with some willingness to pay
-   - 5: High value, frequent, frustrating, expensive problem with clear payment potential
-4. **MVP Direction**: 1-2 simple product ideas that could solve this problem
+对于每批帖子，你需要分析并提取：
+1. **痛点总结**：用户抱怨或寻求解决方案的具体问题是什么？
+2. **目标受众**：谁面临这个问题？（例如：独立开发者、电商卖家、咨询师等）
+3. **商业价值评分**：1-5 分评级
+   - 1: 低价值，小众或一次性问题
+   - 3: 中等价值，常见问题，有一定付费意愿
+   - 5: 高价值，频繁、令人沮丧、昂贵的问题，具有明确的付费潜力
+4. **MVP 方向**：1-2 个可以解决这个问题的简单产品想法
 
-Return your analysis in the specified JSON format. Be specific and actionable. Focus on problems that could lead to viable products or services."""
+请用中文返回分析结果，使用指定的 JSON 格式。要具体且可操作。专注于可能带来可行产品或服务的问题。"""
 
 
-USER_PROMPT_TEMPLATE = """Analyze these {count} Reddit posts and identify business opportunities based on user pain points.
+USER_PROMPT_TEMPLATE = """分析这 {count} 条 Reddit 帖子，基于用户痛点识别商业机会。
 
-## Posts to Analyze:
+## 待分析的帖子：
 {posts_text}
 
-## Output Format (JSON):
+## 输出格式 (JSON)：
 {{
   "opportunities": [
     {{
-      "pain_point": "Clear description of the problem users are facing",
-      "target_audience": "Who experiences this problem (specific role/occupation)",
+      "pain_point": "用户面临问题的清晰描述",
+      "target_audience": "谁面临这个问题（具体角色/职业）",
       "business_value_score": 1-5,
-      "mvp_suggestions": ["Simple solution idea 1", "Simple solution idea 2"],
-      "source_posts": ["post title 1", "post title 2"]
+      "mvp_suggestions": ["简单解决方案想法 1", "简单解决方案想法 2"],
+      "source_posts": ["帖子标题 1", "帖子标题 2"]
     }}
   ]
 }}
 
-## Rules:
-- Group similar posts into the same opportunity when possible
-- Focus on problems with clear business potential
-- Score based on frequency, frustration level, and payment willingness
-- MVP suggestions should be simple and implementable in days, not months"""
+## 规则：
+- 尽可能将相似的帖子归为同一机会
+- 专注于具有明确商业潜力的问题
+- 根据频率、沮丧程度和付费意愿进行评分
+- MVP 建议应该简单，可在几天内实现，而不是几个月"""
 
 
 def format_posts_for_analysis(posts: List[Dict]) -> str:
@@ -70,7 +70,7 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
         Analysis results dictionary
     """
     if not posts:
-        return {"opportunities": [], "message": "No posts to analyze"}
+        return {"opportunities": [], "message": "没有可分析的帖子"}
 
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -87,7 +87,7 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
         posts_text=posts_text,
     )
 
-    print(f"\nSending {len(posts)} posts to LLM for analysis...")
+    print(f"\n正在将 {len(posts)} 条帖子发送给 LLM 进行分析...")
 
     response = client.chat.completions.create(
         model=model,
@@ -110,38 +110,38 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
         else:
             result = {"raw_response": content, "opportunities": []}
     except (json.JSONDecodeError, AttributeError) as e:
-        print(f"Error parsing LLM response: {e}")
+        print(f"解析 LLM 响应时出错: {e}")
         result = {"raw_response": content if 'content' in dir() else "", "opportunities": []}
 
     return result
 
 
 def print_analysis_report(analysis: Dict):
-    """Print a formatted analysis report."""
+    """打印格式化的分析报告。"""
     opportunities = analysis.get("opportunities", [])
 
     if not opportunities:
-        print("\nNo opportunities found.")
+        print("\n未找到商业机会。")
         return
 
     separator = "=" * 60
     print(f"\n{separator}")
-    print("PAIN POINT ANALYSIS REPORT")
-    print(f"Found {len(opportunities)} business opportunities")
+    print("痛点分析报告")
+    print(f"发现 {len(opportunities)} 个商业机会")
     print(f"{separator}\n")
 
     for i, opp in enumerate(opportunities, 1):
         score = opp.get("business_value_score", 0)
         score_bar = "★" * score + "☆" * (5 - score)
 
-        print(f"[{i}] Pain Point: {opp.get('pain_point', 'N/A')}")
-        print(f"    Target Audience: {opp.get('target_audience', 'N/A')}")
-        print(f"    Business Value: {score_bar} ({score}/5)")
-        print("    MVP Ideas:")
+        print(f"[{i}] 痛点: {opp.get('pain_point', '无')}")
+        print(f"    目标受众: {opp.get('target_audience', '无')}")
+        print(f"    商业价值: {score_bar} ({score}/5)")
+        print("    MVP 建议:")
         for idea in opp.get("mvp_suggestions", []):
             print(f"      - {idea}")
         sources = ", ".join(opp.get("source_posts", [])[:3])
-        print(f"    Sources: {sources}")
+        print(f"    来源: {sources}")
         print()
 
 
@@ -149,12 +149,12 @@ if __name__ == "__main__":
     # Test the analyzer
     from src.painhunter.rss_fetcher import fetch_reddit_posts
 
-    print("Fetching posts...")
+    print("正在获取帖子...")
     posts = fetch_reddit_posts(subreddits=["SaaS", "Entrepreneur"], hours_ago=24)
 
     if posts:
-        print("\nAnalyzing with LLM...")
+        print("\n正在使用 LLM 进行分析...")
         analysis = analyze_pain_points(posts)
         print_analysis_report(analysis)
     else:
-        print("No posts found to analyze.")
+        print("未找到可分析的帖子。")
