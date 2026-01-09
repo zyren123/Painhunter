@@ -1,8 +1,9 @@
 """AI Analyzer module for Reddit pain point analysis using OpenAI-compatible API."""
 
+import asyncio
 import os
 from typing import List, Dict
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
 # System prompt for pain point analysis
@@ -137,6 +138,166 @@ def format_posts_for_analysis(posts: List[Dict]) -> str:
     return "\n\n".join(formatted)
 
 
+async def _try_call_llm_async(
+    client: AsyncOpenAI,
+    messages: List[Dict],
+    model: str = None,
+    max_retries: int = 2,
+) -> str:
+    """异步尝试调用 LLM，支持模型递进降级。
+
+    递进顺序：
+    1. 环境变量 OPENAI_MODEL 或 'gemini-3-flash-preview'
+    2. 'gemini-2.5-flash'
+    3. 'gemini-2.5-flash-lite'
+
+    Args:
+        client: AsyncOpenAI 客户端
+        messages: 消息列表
+        model: 首选模型（默认从环境变量读取）
+        max_retries: 每个模型的最大重试次数
+
+    Returns:
+        LLM 响应内容
+    """
+    if model is None:
+        model = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
+
+    # 模型递进列表
+    models = [model]
+    if model != "gemini-2.5-flash-lite":
+        models.append("gemini-2.5-flash")
+    if model != "gemini-2.5-flash-lite":
+        models.append("gemini-2.5-flash-lite")
+
+    last_error = None
+    for attempt_model in models:
+        for attempt in range(max_retries):
+            try:
+                print(f"  尝试模型: {attempt_model} (第 {attempt + 1} 次)")
+                response = await client.chat.completions.create(
+                    model=attempt_model,
+                    messages=messages,
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                last_error = e
+                print(f"  模型 {attempt_model} 调用失败: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1)
+                continue
+        # 尝试下一个模型
+        print(f"  模型 {attempt_model} 多次失败，尝试下一个模型...")
+
+    raise RuntimeError(f"所有模型调用失败: {last_error}")
+
+
+async def screen_posts_with_llm(posts: List[Dict]) -> List[Dict]:
+    """使用 LLM 语义理解筛选有价值的帖子（异步并发执行）。
+
+    Args:
+        posts: 原始帖子列表
+
+    Returns:
+        筛选后的有价值帖子列表
+    """
+    if not posts:
+        return []
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY not set in environment")
+
+    base_url = os.environ.get("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+
+    # 计算批次大小：目标调用次数 ≤ 15
+    import math
+
+    total_posts = len(posts)
+    max_calls = 15
+    batch_size = math.ceil(total_posts / max_calls)
+    max_concurrent = 4  # 最大并发数
+
+    print(f"\nLLM 初筛：共 {total_posts} 条帖子，分 {math.ceil(total_posts / batch_size)} 批处理，并发数: {max_concurrent}")
+
+    screening_prompt = """判断每条 Reddit 帖子是否包含以下特征（只返回 JSON 数组）：
+
+判断标准（满足任意一条即为有价值）：
+1. 用户遇到痛点或问题，正在寻求解决方案
+2. 用户表达了对现有工具/产品的不满
+3. 用户有明确的产品想法或功能需求
+4. 适合独立开发者快速构建的浏览器插件或轻量级 Web 应用机会
+
+输出格式（JSON 数组）：
+[
+  {"index": 0, "is_valuable": true, "reason": "简短理由"},
+  {"index": 1, "is_valuable": false, "reason": "..."}
+]
+
+只返回 JSON，不要其他内容。"""
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def process_batch(batch_start: int) -> List[int]:
+        """处理单个批次，返回有价值帖子的索引列表。"""
+        async with semaphore:
+            batch_end = min(batch_start + batch_size, total_posts)
+            batch_posts = posts[batch_start:batch_end]
+
+            posts_text = format_posts_for_analysis(batch_posts)
+            messages = [
+                {"role": "system", "content": "你是一个帖子筛选助手，只返回 JSON 格式的判断结果。"},
+                {"role": "user", "content": f"{screening_prompt}\n\n待筛选的帖子：\n\n{posts_text}"},
+            ]
+
+            print(f"  处理批次 {batch_start // batch_size + 1}: 帖子 {batch_start + 1}-{batch_end}")
+
+            valuable_indices = []
+            try:
+                content = await _try_call_llm_async(client, messages)
+
+                import json
+                start = content.find("[")
+                end = content.rfind("]") + 1
+                if start != -1 and end != 0:
+                    json_str = content[start:end]
+                    results = json.loads(json_str)
+                    for item in results:
+                        idx = item.get("index", -1)
+                        if idx >= 0 and item.get("is_valuable"):
+                            actual_idx = batch_start + idx
+                            if actual_idx < total_posts:
+                                valuable_indices.append(actual_idx)
+                else:
+                    print(f"  警告：批次 {batch_start // batch_size + 1} 解析失败")
+
+            except Exception as e:
+                print(f"  批次 {batch_start // batch_size + 1} 处理失败: {e}")
+
+            return valuable_indices
+
+    # 并发处理所有批次
+    batch_starts = list(range(0, total_posts, batch_size))
+
+    tasks = [process_batch(bs) for bs in batch_starts]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 收集结果
+    all_valuable_indices = []
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"批次处理异常: {result}")
+        else:
+            all_valuable_indices.extend(result)
+
+    # 返回筛选后的帖子
+    valuable_posts = [posts[i] for i in all_valuable_indices if i < len(posts)]
+    print(f"\nLLM 初筛完成：保留 {len(valuable_posts)}/{total_posts} 条有价值帖子")
+
+    return valuable_posts
+
+
 def calculate_overall_score(tech: int, monetize: int, claude: int) -> float:
     """计算综合评分，技术难度权重较低，变现潜力权重较高"""
     # 边界检查，确保分数在 1-5 范围内
@@ -146,8 +307,13 @@ def calculate_overall_score(tech: int, monetize: int, claude: int) -> float:
     return round((tech * 0.2 + monetize * 0.4 + claude * 0.4), 1)
 
 
-def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
-    """按 Subreddit 来源分组分析文章。
+async def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
+    """按 Subreddit 来源分组分析文章（异步执行）。
+
+    流程：
+    1. LLM 初筛（保留有价值帖子）- 异步并发
+    2. 按 Subreddit 分组
+    3. 深度分析每个 Subreddit
 
     Args:
         posts: List of post dictionaries from rss_fetcher
@@ -160,21 +326,33 @@ def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
     if not posts:
         return {"opportunities": [], "message": "没有可分析的帖子"}
 
-    # 1. 按 subreddit 分组
+    # 1. LLM 初筛 - 保留有价值帖子（异步并发）
+    print(f"\n{'='*60}")
+    print("阶段 1: LLM 初筛 - 语义理解筛选")
+    print(f"{'='*60}")
+    valuable_posts = await screen_posts_with_llm(posts)
+
+    if not valuable_posts:
+        return {"opportunities": [], "message": "初筛后没有有价值帖子"}
+
+    # 2. 按 subreddit 分组
+    print(f"\n{'='*60}")
+    print("阶段 2: 按 Subreddit 分组分析")
+    print(f"{'='*60}")
     posts_by_subreddit = defaultdict(list)
-    for post in posts:
+    for post in valuable_posts:
         posts_by_subreddit[post['subreddit']].append(post)
 
     all_opportunities = []
 
-    # 2. 逐个 subreddit 分析
+    # 3. 逐个 subreddit 深度分析
     for subreddit, group_posts in posts_by_subreddit.items():
         print(f"\n正在分析 r/{subreddit} 的 {len(group_posts)} 条帖子...")
 
         # 调用现有分析函数（传入单组文章）
-        result = analyze_pain_points(group_posts)
+        result = await analyze_pain_points(group_posts)
 
-        # 3. 为每个 opportunity 添加 subreddit 标识
+        # 为每个 opportunity 添加 subreddit 标识
         for opp in result.get("opportunities", []):
             opp["source_subreddit"] = subreddit
             all_opportunities.append(opp)
@@ -184,12 +362,14 @@ def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
         "opportunities": all_opportunities,
         "summary": {
             "total_opportunities": len(all_opportunities),
-            "by_subreddit": {k: len(v) for k, v in posts_by_subreddit.items()}
+            "by_subreddit": {k: len(v) for k, v in posts_by_subreddit.items()},
+            "posts_screened": len(posts),
+            "posts_after_screening": len(valuable_posts)
         }
     }
 
 
-def analyze_pain_points(posts: List[Dict]) -> Dict:
+async def analyze_pain_points(posts: List[Dict]) -> Dict:
     """Analyze Reddit posts for pain points using OpenAI-compatible API.
 
     Uses OPENAI_API_KEY and OPENAI_BASE_URL from environment or .env file.
@@ -210,7 +390,7 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
     base_url = os.environ.get("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
     model = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     posts_text = format_posts_for_analysis(posts)
     user_prompt = USER_PROMPT_TEMPLATE.format(
@@ -220,7 +400,7 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
 
     print(f"\n正在将 {len(posts)} 条帖子发送给 LLM 进行分析...")
 
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},

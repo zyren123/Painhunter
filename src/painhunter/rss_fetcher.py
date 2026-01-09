@@ -14,26 +14,6 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-# Keywords for filtering pain point posts
-KEYWORDS = [
-    # Demand patterns
-    "is there an app",
-    "anyone know a tool",
-    "how do I",
-    # Complaint patterns
-    "frustrated with",
-    "too expensive",
-    "struggling with",
-    "hate it when",
-    # Efficiency patterns
-    "manual task",
-    "waste of time",
-    "tedious",
-    # Additional
-    "how to",
-    "tool",
-]
-
 
 def parse_reddit_timestamp(published: str) -> datetime:
     """Parse Reddit's feed timestamp format."""
@@ -49,18 +29,17 @@ def is_within_hours(published_dt: datetime, hours: int = 24) -> bool:
     return published_dt >= threshold
 
 
-def contains_keyword(text: str, keywords: List[str], case_sensitive: bool = False) -> bool:
-    """Check if text contains any of the keywords."""
-    text_to_check = text if case_sensitive else text.lower()
-    for keyword in keywords:
-        keyword_to_check = keyword if case_sensitive else keyword.lower()
-        if keyword_to_check in text_to_check:
-            return True
-    return False
+def fetch_subreddit_posts(subreddit: str, hours_ago: int = 24, max_posts: int = 100) -> List[Dict]:
+    """Fetch posts from a subreddit's RSS feed within the specified time window.
 
+    Args:
+        subreddit: Subreddit name (without 'r/')
+        hours_ago: Only fetch posts from the last N hours
+        max_posts: Maximum number of posts to fetch (default 100)
 
-def fetch_subreddit_posts(subreddit: str, hours_ago: int = 24) -> List[Dict]:
-    """Fetch posts from a subreddit's RSS feed within the specified time window."""
+    Returns:
+        List of post dictionaries
+    """
     url = REDDIT_RSS_BASE.format(subreddit=subreddit)
     posts = []
 
@@ -70,6 +49,8 @@ def fetch_subreddit_posts(subreddit: str, hours_ago: int = 24) -> List[Dict]:
         feed = feedparser.parse(response.content)
 
         for entry in feed.entries:
+            if len(posts) >= max_posts:
+                break
             try:
                 # Parse publication time
                 if hasattr(entry, 'published'):
@@ -99,33 +80,20 @@ def fetch_subreddit_posts(subreddit: str, hours_ago: int = 24) -> List[Dict]:
     return posts
 
 
-def filter_by_keywords(posts: List[Dict], keywords: List[str] = None) -> List[Dict]:
-    """Filter posts that contain any of the specified keywords in title or summary."""
-    if keywords is None:
-        keywords = KEYWORDS
-
-    filtered = []
-    for post in posts:
-        text_to_check = f"{post['title']} {post['summary']}"
-        if contains_keyword(text_to_check, keywords):
-            filtered.append(post)
-    return filtered
-
-
 def fetch_reddit_posts(
     subreddits: List[str] = None,
-    keywords: List[str] = None,
     hours_ago: int = 24,
+    max_posts_per_subreddit: int = 100,
 ) -> List[Dict]:
-    """Main function to fetch and filter Reddit posts.
+    """Main function to fetch Reddit posts.
 
     Args:
         subreddits: List of subreddit names (without 'r/')
-        keywords: List of keywords to filter by
         hours_ago: Only fetch posts from the last N hours
+        max_posts_per_subreddit: Maximum posts per subreddit (default 100)
 
     Returns:
-        List of filtered post dictionaries
+        List of post dictionaries (unfiltered)
     """
     if subreddits is None:
         subreddits = ["SaaS", "Entrepreneur"]
@@ -133,17 +101,13 @@ def fetch_reddit_posts(
     all_posts = []
     for subreddit in subreddits:
         print(f"Fetching posts from r/{subreddit}...")
-        posts = fetch_subreddit_posts(subreddit, hours_ago)
+        posts = fetch_subreddit_posts(subreddit, hours_ago, max_posts_per_subreddit)
         print(f"  Found {len(posts)} posts in the last {hours_ago} hours")
         all_posts.extend(posts)
 
     print(f"\nTotal posts fetched: {len(all_posts)}")
 
-    # Filter by keywords
-    filtered_posts = filter_by_keywords(all_posts, keywords)
-    print(f"Posts matching keywords: {len(filtered_posts)}")
-
-    return filtered_posts
+    return all_posts
 
 
 if __name__ == "__main__":

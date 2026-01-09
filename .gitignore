@@ -41,3 +41,4 @@ Thumbs.db
 # Project specific
 report_*.html
 *.log
+.serena/

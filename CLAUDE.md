@@ -24,3 +24,11 @@
 当前监控的 Subreddits (`main.py`):
 - `["SaaS", "Entrepreneur", "SideProject", "smallbusiness"]`
 - 可添加: `freelance`, `investing`, `WebDev` 等
+
+Serena MCP 工具（可用时优先使用）：
+- 读取/编辑/创建文件：serena_read_file / serena_create_text_file / serena_replace_content
+- 搜索代码模式：serena_search_for_pattern
+- 查找符号/引用：serena_find_symbol / serena_find_referencing_symbols
+- 查看符号概览：serena_get_symbols_overview
+- 执行shell命令：serena_execute_shell_command
+- 简单文件操作用 Serena，复杂命令用 Bash

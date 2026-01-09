@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import asyncio
 from src.painhunter.rss_fetcher import fetch_reddit_posts
 from src.painhunter.analyzer import analyze_pain_points_by_source, print_analysis_report
 from src.painhunter.emailer import send_report, generate_html_report
@@ -10,8 +11,8 @@ from src.painhunter.emailer import send_report, generate_html_report
 load_dotenv()
 
 
-def main():
-    """Main entry point for Painhunter."""
+async def main():
+    """Main entry point for Painhunter (async version)."""
     print("=== Painhunter: Reddit Pain Point Hunter ===\n")
 
     # Check for API key
@@ -32,9 +33,9 @@ def main():
         print(f"\n[{post['subreddit']}] {post['title']}")
         print(f"  Link: {post['link']}")
 
-    # AI Analysis
+    # AI Analysis (async)
     if posts:
-        analysis = analyze_pain_points_by_source(posts)
+        analysis = await analyze_pain_points_by_source(posts)
         print_analysis_report(analysis)
 
         # Generate and save HTML report
@@ -54,4 +55,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
