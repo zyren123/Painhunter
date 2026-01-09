@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 from src.painhunter.rss_fetcher import fetch_reddit_posts
-from src.painhunter.analyzer import analyze_pain_points, print_analysis_report
+from src.painhunter.analyzer import analyze_pain_points_by_source, print_analysis_report
 from src.painhunter.emailer import send_report, generate_html_report
 
 
@@ -34,7 +34,7 @@ def main():
 
     # AI Analysis
     if posts:
-        analysis = analyze_pain_points(posts)
+        analysis = analyze_pain_points_by_source(posts)
         print_analysis_report(analysis)
 
         # Generate and save HTML report

@@ -7,7 +7,7 @@ import httpx
 
 
 # Reddit RSS endpoint
-REDDIT_RSS_BASE = "https://www.reddit.com/r/{subreddit}/new/.rss"
+REDDIT_RSS_BASE = "https://www.reddit.com/r/{subreddit}/top/.rss?t=day"
 
 # User-Agent to mimic browser and avoid blocking
 HEADERS = {

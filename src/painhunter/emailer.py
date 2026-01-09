@@ -248,6 +248,16 @@ HTML_TEMPLATE = """
             background: rgba(129, 140, 248, 0.25);
         }}
 
+        /* Subreddit Badge */
+        .subreddit-badge {{
+            background: rgba(129, 140, 248, 0.15);
+            color: #818cf8;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+
         /* Footer */
         .footer {{
             text-align: center;
@@ -317,6 +327,7 @@ def _escape_html(text: str) -> str:
 OPPORTUNITY_TEMPLATE = """
     <div class="opportunity">
         <div class="pain-header">
+            <span class="subreddit-badge">r/{subreddit}</span>
             <h2 class="pain-point">💡 {pain_point}</h2>
             <span class="product-type type-{product_type}">{product_type}</span>
         </div>
@@ -399,6 +410,7 @@ def format_opportunities_html(opportunities: List[Dict]) -> Tuple[str, Dict]:
 
         html_parts.append(
             OPPORTUNITY_TEMPLATE.format(
+                subreddit=_escape_html(opp.get("source_subreddit", "unknown")),
                 pain_point=_escape_html(opp.get("pain_point", "N/A")),
                 product_type=product_type_hyphenated,
                 audience=_escape_html(opp.get("target_audience", "N/A")),

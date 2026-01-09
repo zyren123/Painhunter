@@ -146,6 +146,49 @@ def calculate_overall_score(tech: int, monetize: int, claude: int) -> float:
     return round((tech * 0.2 + monetize * 0.4 + claude * 0.4), 1)
 
 
+def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
+    """按 Subreddit 来源分组分析文章。
+
+    Args:
+        posts: List of post dictionaries from rss_fetcher
+
+    Returns:
+        Analysis results with source_subreddit field added to each opportunity
+    """
+    from collections import defaultdict
+
+    if not posts:
+        return {"opportunities": [], "message": "没有可分析的帖子"}
+
+    # 1. 按 subreddit 分组
+    posts_by_subreddit = defaultdict(list)
+    for post in posts:
+        posts_by_subreddit[post['subreddit']].append(post)
+
+    all_opportunities = []
+
+    # 2. 逐个 subreddit 分析
+    for subreddit, group_posts in posts_by_subreddit.items():
+        print(f"\n正在分析 r/{subreddit} 的 {len(group_posts)} 条帖子...")
+
+        # 调用现有分析函数（传入单组文章）
+        result = analyze_pain_points(group_posts)
+
+        # 3. 为每个 opportunity 添加 subreddit 标识
+        for opp in result.get("opportunities", []):
+            opp["source_subreddit"] = subreddit
+            all_opportunities.append(opp)
+
+    # 4. 合并结果
+    return {
+        "opportunities": all_opportunities,
+        "summary": {
+            "total_opportunities": len(all_opportunities),
+            "by_subreddit": {k: len(v) for k, v in posts_by_subreddit.items()}
+        }
+    }
+
+
 def analyze_pain_points(posts: List[Dict]) -> Dict:
     """Analyze Reddit posts for pain points using OpenAI-compatible API.
 
