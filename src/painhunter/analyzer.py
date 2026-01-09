@@ -6,21 +6,66 @@ from openai import OpenAI
 
 
 # System prompt for pain point analysis
-SYSTEM_PROMPT = """你是一位商业分析师和产品策略师。你的工作是分析 Reddit 帖子并识别真正的用户痛点，这些痛点代表商业机会。
+SYSTEM_PROMPT = """你是一位浏览器插件产品分析师和独立开发者顾问。你的使命是发现独立开发者可以快速构建并变现的产品机会。
+
+## 核心优先级
+
+**产品形态优先级（按顺序）：**
+1. **浏览器插件** - 优先识别，任何涉及浏览器操作、网页增强、用户脚本的需求
+2. **轻量级 Web 应用** - 配合浏览器插件使用的辅助服务
+3. **其他产品** - 仅在上述都不适用时考虑
+
+## 分析维度
 
 对于每批帖子，你需要分析并提取：
-1. **痛点总结**：用户抱怨或寻求解决方案的具体问题是什么？
-2. **目标受众**：谁面临这个问题？（例如：独立开发者、电商卖家、咨询师等）
-3. **商业价值评分**：1-5 分评级
-   - 1: 低价值，小众或一次性问题
-   - 3: 中等价值，常见问题，有一定付费意愿
-   - 5: 高价值，频繁、令人沮丧、昂贵的问题，具有明确的付费潜力
-4. **MVP 方向**：1-2 个可以解决这个问题的简单产品想法
 
-请用中文返回分析结果，使用指定的 JSON 格式。要具体且可操作。专注于可能带来可行产品或服务的问题。"""
+### 1. 痛点总结
+用户抱怨或寻求解决方案的具体问题是什么？用一句话精准描述。
+
+### 2. 目标受众
+谁面临这个问题？（具体到职业/场景，如：独立站卖家、程序员、内容创作者）
+
+### 3. 产品形态判定
+- "browser_extension" - 浏览器插件需求
+- "web_app" - 独立 Web 应用
+- "saas" - SaaS 服务
+- "other" - 其他
+
+### 4. 评分维度 (1-5分)
+
+#### 技术实现难度 (tech_complexity_score)
+- 1分: 单文件插件，Claude Code 可在数小时内完成
+- 2分: 简单插件 + 本地存储，无需后端
+- 3分: 插件 + 简单后端 API (FastAPI/Cloudflare Workers)
+- 4分: 复杂插件 + 完整后端 + 认证系统
+- 5分: 需要复杂基础设施或第三方集成
+
+#### 变现潜力 (monetization_score)
+- 1分: 小众需求，难以规模化
+- 2分: 细分市场，潜在用户有限
+- 3分: 中等市场，可支撑 $5-15/月定价
+- 4分: 较大市场，可支撑 $15-29/月定价
+- 5分: 广阔市场，有涨价空间
+
+#### Claude Code 实现可行性 (claude_code_score)
+- 1分: Claude Code 可独立完成，无需人工介入
+- 3分: 需要少量人工指导和代码审查
+- 5分: 需要大量人工干预和复杂架构设计
+
+### 5. MVP 建议格式
+必须使用 "【X】插件 + Y 功能" 格式，例如：
+- "【标签页管理】Tab 增强插件 + AI 自动分类功能"
+- "【评论增强】插件 + 一键模板回复功能"
+
+每个机会给出 1-2 个 MVP 建议。
+
+### 6. 预估定价
+给出合理的订阅价格区间（$5-29/月）。
+
+请用中文返回分析结果，使用指定的 JSON 格式。"""
 
 
-USER_PROMPT_TEMPLATE = """分析这 {count} 条 Reddit 帖子，基于用户痛点识别商业机会。
+USER_PROMPT_TEMPLATE = """分析这 {count} 条 Reddit 帖子，基于用户痛点识别浏览器插件类商业机会。
 
 ## 待分析的帖子：
 {posts_text}
@@ -29,20 +74,54 @@ USER_PROMPT_TEMPLATE = """分析这 {count} 条 Reddit 帖子，基于用户痛�
 {{
   "opportunities": [
     {{
-      "pain_point": "用户面临问题的清晰描述",
-      "target_audience": "谁面临这个问题（具体角色/职业）",
-      "business_value_score": 1-5,
-      "mvp_suggestions": ["简单解决方案想法 1", "简单解决方案想法 2"],
+      "pain_point": "用户面临问题的精准描述",
+      "target_audience": "具体目标用户群体",
+      "product_type": "browser_extension | web_app | saas | other",
+      "tech_complexity_score": 1-5,
+      "monetization_score": 1-5,
+      "claude_code_score": 1-5,
+      "pricing_estimate": "$X-$Y/月",
+      "mvp_suggestions": [
+        "【类型】插件 + 核心功能描述"
+      ],
+      "tech_stack_recommendation": "推荐技术栈",
+      "differentiation": "与竞品的差异化点",
+      "revenue_potential": "预估月收入（如：1000用户×$10 = $10,000/月）",
       "source_posts": ["帖子标题 1", "帖子标题 2"]
     }}
-  ]
+  ],
+  "summary": {{
+    "total_opportunities": 5,
+    "browser_extension_count": 3,
+    "quick_win": "技术复杂度1分，可立即实现的机会"
+  }}
 }}
 
-## 规则：
-- 尽可能将相似的帖子归为同一机会
-- 专注于具有明确商业潜力的问题
-- 根据频率、沮丧程度和付费意愿进行评分
-- MVP 建议应该简单，可在几天内实现，而不是几个月"""
+## 评分标准
+
+### 技术实现难度 (tech_complexity_score)
+- 1: 单文件油猴脚本/简单书签工具
+- 2: 简单 Chrome 扩展，manifest V3，基础功能
+- 3: 中等复杂度插件，Popup + Content Script + Background，无复杂后端
+- 4: 复杂插件，需要后端 API
+- 5: 复杂系统，需要数据库、认证、支付
+
+### 变现潜力 (monetization_score)
+- 1-2: 小众市场
+- 3: 细分市场，可支撑 $5-15/月
+- 4: 中等市场，可支撑 $15-29/月
+- 5: 大众市场，有涨价空间
+
+### Claude Code 可实现性 (claude_code_score)
+- 1: Claude Code 可独立完成全部代码
+- 2-3: Claude Code 可完成大部分，需少量人工
+- 4-5: 需要大量人工设计和编码
+
+## 关键要求
+- 只输出 3-5 个最有价值的机会
+- MVP 必须是 Claude Code 可在 1-3 天内实现的产品
+- 优先选择浏览器插件类机会
+- 预估定价必须落在 $5-29/月 区间"""
 
 
 def format_posts_for_analysis(posts: List[Dict]) -> str:
@@ -56,6 +135,15 @@ def format_posts_for_analysis(posts: List[Dict]) -> str:
             f"Link: {post['link']}"
         )
     return "\n\n".join(formatted)
+
+
+def calculate_overall_score(tech: int, monetize: int, claude: int) -> float:
+    """计算综合评分，技术难度权重较低，变现潜力权重较高"""
+    # 边界检查，确保分数在 1-5 范围内
+    tech = max(1, min(5, tech))
+    monetize = max(1, min(5, monetize))
+    claude = max(1, min(5, claude))
+    return round((tech * 0.2 + monetize * 0.4 + claude * 0.4), 1)
 
 
 def analyze_pain_points(posts: List[Dict]) -> Dict:
@@ -137,6 +225,27 @@ def analyze_pain_points(posts: List[Dict]) -> Dict:
                     source_links.append({"title": title, "link": None})
         opp["source_posts_with_links"] = source_links
 
+    # 计算综合评分
+    for opp in result.get("opportunities", []):
+        tech = opp.get("tech_complexity_score", 3)
+        monetize = opp.get("monetization_score", 3)
+        claude = opp.get("claude_code_score", 3)
+        opp["overall_score"] = calculate_overall_score(tech, monetize, claude)
+
+        # 标准化产品类型为英文，支持中文和英文输入
+        product_type = opp.get("product_type", "other")
+        type_map = {
+            "浏览器插件": "browser_extension",
+            "浏览器插件需求": "browser_extension",
+            "web_app": "browser_extension",
+            "Web应用": "web_app",
+            "独立Web应用": "web_app",
+            "saas": "saas",
+            "SaaS": "saas",
+            "其他": "other",
+        }
+        opp["product_type"] = type_map.get(product_type, "other")
+
     return result
 
 
@@ -150,20 +259,30 @@ def print_analysis_report(analysis: Dict):
 
     separator = "=" * 60
     print(f"\n{separator}")
-    print("痛点分析报告")
+    print("痛点分析报告 - 浏览器插件变现机会")
     print(f"发现 {len(opportunities)} 个商业机会")
     print(f"{separator}\n")
 
     for i, opp in enumerate(opportunities, 1):
-        score = opp.get("business_value_score", 0)
-        score_bar = "★" * score + "☆" * (5 - score)
+        tech = opp.get("tech_complexity_score", 0)
+        monetize = opp.get("monetization_score", 0)
+        claude = opp.get("claude_code_score", 0)
+        overall = opp.get("overall_score", 0)
+        product_type = opp.get("product_type", "other")
+        pricing = opp.get("pricing_estimate", "待定")
 
         print(f"[{i}] 痛点: {opp.get('pain_point', '无')}")
+        print(f"    产品类型: {product_type}")
         print(f"    目标受众: {opp.get('target_audience', '无')}")
-        print(f"    商业价值: {score_bar} ({score}/5)")
+        print(f"    评分: 技术{tech}/5 | 变现{monetize}/5 | Claude{claude}/5 | 综合{overall}/5")
+        print(f"    预估定价: {pricing}")
         print("    MVP 建议:")
         for idea in opp.get("mvp_suggestions", []):
             print(f"      - {idea}")
+        if opp.get("tech_stack_recommendation"):
+            print(f"    技术栈: {opp.get('tech_stack_recommendation')}")
+        if opp.get("revenue_potential"):
+            print(f"    收入潜力: {opp.get('revenue_potential')}")
         sources = ", ".join(opp.get("source_posts", [])[:3])
         print(f"    来源: {sources}")
         print()

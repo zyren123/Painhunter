@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 from src.painhunter.rss_fetcher import fetch_reddit_posts
 from src.painhunter.analyzer import analyze_pain_points, print_analysis_report
@@ -35,6 +36,14 @@ def main():
     if posts:
         analysis = analyze_pain_points(posts)
         print_analysis_report(analysis)
+
+        # Generate and save HTML report
+        html_report = generate_html_report(analysis)
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        report_filename = f"/tmp/painhunter_report_{date_str}.html"
+        with open(report_filename, "w", encoding="utf-8") as f:
+            f.write(html_report)
+        print(f"\nHTML report saved to: {report_filename}")
 
         # Try to send email report
         print("\nAttempting to send email report...")
