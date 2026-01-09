@@ -1,9 +1,9 @@
 name: Daily Pain Point Report
 
 on:
-  # Run daily at 00:00 UTC
+  # Run daily at 01:00 Pacific Time (UTC 08:00 during PDT Mar-Nov, UTC 09:00 during PST Nov-Mar)
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 8 * * *'
   # Allow manual trigger
   workflow_dispatch:
   # Run on push to main
