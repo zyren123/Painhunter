@@ -2,8 +2,48 @@
 
 import asyncio
 import os
+import time
 from typing import List, Dict
 from openai import AsyncOpenAI
+
+
+class RateLimiter:
+    """严格控制 RPM 在 5 以下的速率限制器。"""
+
+    def __init__(self, max_rpm: int = 5):
+        self.max_rpm = max_rpm
+        self.min_interval = 60.0 / max_rpm  # 每次请求最小间隔
+        self.last_request_time = 0
+        self.request_count = 0
+        self.window_start = time.time()
+
+    async def acquire(self):
+        """获取请求许可，确保 RPM 不超过限制。"""
+        current_time = time.time()
+
+        # 检查是否需要重置时间窗口
+        if current_time - self.window_start >= 60:
+            self.request_count = 0
+            self.window_start = current_time
+
+        # 确保两次请求之间有足够间隔
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.min_interval:
+            await asyncio.sleep(self.min_interval - time_since_last)
+
+        self.last_request_time = time.time()
+        self.request_count += 1
+
+    def get_current_rpm(self) -> float:
+        """获取当前 RPM。"""
+        elapsed = time.time() - self.window_start
+        if elapsed > 0:
+            return self.request_count / elapsed * 60
+        return 0
+
+
+# 全局速率限制器
+rate_limiter = RateLimiter(max_rpm=4)
 
 
 # System prompt for pain point analysis
@@ -175,6 +215,9 @@ async def _try_call_llm_async(
         for attempt in range(max_retries):
             try:
                 print(f"  尝试模型: {attempt_model} (第 {attempt + 1} 次)")
+                # 速率限制：请求前等待
+                await rate_limiter.acquire()
+                print(f"  当前 RPM: {rate_limiter.get_current_rpm():.1f}")
                 response = await client.chat.completions.create(
                     model=attempt_model,
                     messages=messages,
@@ -399,6 +442,10 @@ async def analyze_pain_points(posts: List[Dict]) -> Dict:
     )
 
     print(f"\n正在将 {len(posts)} 条帖子发送给 LLM 进行分析...")
+
+    # 速率限制：请求前等待
+    await rate_limiter.acquire()
+    print(f"  当前 RPM: {rate_limiter.get_current_rpm():.1f}")
 
     response = await client.chat.completions.create(
         model=model,
