@@ -298,7 +298,8 @@ async def screen_posts_with_llm(posts: List[Dict]) -> List[Dict]:
 
             valuable_indices = []
             try:
-                content = await _try_call_llm_async(client, messages)
+                # 初筛使用固定的次等模型（gemini-2.5-flash），失败后降级到更轻量模型
+                content = await _try_call_llm_async(client, messages, model="gemini-2.5-flash")
 
                 import json
                 start = content.find("[")
@@ -378,9 +379,9 @@ async def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
     if not valuable_posts:
         return {"opportunities": [], "message": "初筛后没有有价值帖子"}
 
-    # 2. 按 subreddit 分组
+    # 第二轮深度分析 - 使用 .env 配置的模型
     print(f"\n{'='*60}")
-    print("阶段 2: 按 Subreddit 分组分析")
+    print("阶段 2: 深度分析 - 使用配置模型（并发）")
     print(f"{'='*60}")
     posts_by_subreddit = defaultdict(list)
     for post in valuable_posts:
@@ -388,17 +389,29 @@ async def analyze_pain_points_by_source(posts: List[Dict]) -> Dict:
 
     all_opportunities = []
 
-    # 3. 逐个 subreddit 深度分析
-    for subreddit, group_posts in posts_by_subreddit.items():
-        print(f"\n正在分析 r/{subreddit} 的 {len(group_posts)} 条帖子...")
+    # 控制深度分析的并发数
+    max_concurrent = 4
+    analysis_semaphore = asyncio.Semaphore(max_concurrent)
 
-        # 调用现有分析函数（传入单组文章）
-        result = await analyze_pain_points(group_posts)
+    async def analyze_subreddit(subreddit: str, group_posts: List[Dict]) -> List[Dict]:
+        """并发分析单个 subreddit"""
+        async with analysis_semaphore:
+            print(f"\n正在分析 r/{subreddit} 的 {len(group_posts)} 条帖子...")
+            result = await analyze_pain_points(group_posts)
+            opportunities = result.get("opportunities", [])
+            for opp in opportunities:
+                opp["source_subreddit"] = subreddit
+            return opportunities
 
-        # 为每个 opportunity 添加 subreddit 标识
-        for opp in result.get("opportunities", []):
-            opp["source_subreddit"] = subreddit
-            all_opportunities.append(opp)
+    # 并发分析所有 subreddit
+    tasks = [analyze_subreddit(sr, posts) for sr, posts in posts_by_subreddit.items()]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for result in results:
+        if isinstance(result, Exception):
+            print(f"分析失败: {result}")
+        else:
+            all_opportunities.extend(result)
 
     # 4. 合并结果
     return {
