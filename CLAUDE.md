@@ -9,7 +9,8 @@
 |---------|------|------|
 | `OPENAI_API_KEY` | API Key | `sk-xxxxx` |
 | `OPENAI_BASE_URL` | API 端点 | `https://llm.baijia.com/v1/` |
-| `OPENAI_MODEL` | 模型名称 (可选，默认 gpt-4o) | `doubao/Doubao-Seed-1-8-251215` |
+| `OPENAI_MODEL` | 主模型名称 (可选，默认 gemini-3-flash-preview) | `doubao/Doubao-Seed-1-8-251215` |
+| `OPENAI_FILTER_MODEL` | 降级备用模型 (可选，默认 gemini-2.5-flash) | `gemini-2.5-flash` |
 
 #### 邮件配置 (可选，不配置则不发送邮件)
 | 环境变量 | 说明 | 示例 |
@@ -25,10 +26,8 @@
 - `["SaaS", "Entrepreneur", "SideProject", "smallbusiness"]`
 - 可添加: `freelance`, `investing`, `WebDev` 等
 
-Serena MCP 工具（可用时优先使用）：
-- 读取/编辑/创建文件：serena_read_file / serena_create_text_file / serena_replace_content
-- 搜索代码模式：serena_search_for_pattern
-- 查找符号/引用：serena_find_symbol / serena_find_referencing_symbols
-- 查看符号概览：serena_get_symbols_overview
-- 执行shell命令：serena_execute_shell_command
-- 简单文件操作用 Serena，复杂命令用 Bash
+### 测试
+运行 `python main.py` 执行完整测试流程，包括：
+- 从 Subreddit 获取帖子
+- 使用 LLM 进行语义分析
+- 生成报告并发送邮件（如已配置）

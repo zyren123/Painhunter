@@ -429,7 +429,9 @@ def format_opportunities_html(opportunities: List[Dict]) -> Tuple[str, Dict]:
     stats = {
         "plugin_count": plugin_count,
         "webapp_count": webapp_count,
-        "top_pick": _truncate_text(opportunities[0].get("pain_point", "无"), 10) if opportunities else "无"
+        "top_pick": _truncate_text(
+            opportunities[0].get("mvp_suggestions", [opportunities[0].get("pain_point", "无")])[0], 25
+        ) if opportunities else "无"
     }
 
     return "".join(html_parts), stats

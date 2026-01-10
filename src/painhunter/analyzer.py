@@ -187,28 +187,25 @@ async def _try_call_llm_async(
     """异步尝试调用 LLM，支持模型递进降级。
 
     递进顺序：
-    1. 环境变量 OPENAI_MODEL 或 'gemini-3-flash-preview'
-    2. 'gemini-2.5-flash'
-    3. 'gemini-2.5-flash-lite'
+    1. 环境变量 OPENAI_MODEL（主模型）
+    2. 环境变量 OPENAI_FILTER_MODEL（降级备用，默认 gemini-2.5-flash）
 
     Args:
         client: AsyncOpenAI 客户端
         messages: 消息列表
-        model: 首选模型（默认从环境变量读取）
+        model: 首选模型（默认从环境变量 OPENAI_MODEL 读取）
         max_retries: 每个模型的最大重试次数
 
     Returns:
         LLM 响应内容
     """
     if model is None:
-        model = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
+        model = os.environ.get("OPENAI_MODEL") or "gemini-3-flash-preview"
 
-    # 模型递进列表
-    models = [model]
-    if model != "gemini-2.5-flash-lite":
-        models.append("gemini-2.5-flash")
-    if model != "gemini-2.5-flash-lite":
-        models.append("gemini-2.5-flash-lite")
+    # 模型递进列表：优先主模型，失败则降级到 filter model
+    # 使用 or 处理空字符串情况：GitHub Actions 未设置 secret 时会传递空字符串
+    filter_model = os.environ.get("OPENAI_FILTER_MODEL") or "gemini-2.5-flash"
+    models = [model, filter_model]
 
     last_error = None
     for attempt_model in models:
@@ -298,15 +295,40 @@ async def screen_posts_with_llm(posts: List[Dict]) -> List[Dict]:
 
             valuable_indices = []
             try:
-                # 初筛使用固定的次等模型（gemini-2.5-flash），失败后降级到更轻量模型
-                content = await _try_call_llm_async(client, messages, model="gemini-2.5-flash")
+                # 初筛使用主模型，失败后降级到 filter model
+                content = await _try_call_llm_async(client, messages)
 
                 import json
-                start = content.find("[")
-                end = content.rfind("]") + 1
+                import re
+
+                # 清理可能的代码块标记 (```json ... ```)
+                cleaned_content = content
+                # 移除 markdown 代码块标记
+                cleaned_content = re.sub(r'^```json\s*', '', cleaned_content, flags=re.MULTILINE)
+                cleaned_content = re.sub(r'\s*^```\s*$', '', cleaned_content, flags=re.MULTILINE)
+                # 移除行内代码块标记
+                cleaned_content = re.sub(r'`([^`]+)`', r'\1', cleaned_content)
+
+                # 提取 JSON 数组
+                start = cleaned_content.find("[")
+                end = cleaned_content.rfind("]") + 1
                 if start != -1 and end != 0:
-                    json_str = content[start:end]
-                    results = json.loads(json_str)
+                    json_str = cleaned_content[start:end]
+                    # 尝试多次解析，增加容错
+                    try:
+                        results = json.loads(json_str)
+                    except json.JSONDecodeError as e:
+                        # 如果解析失败，尝试更激进的清理
+                        # 移除可能的注释或尾随逗号
+                        json_str_clean = re.sub(r',\s*([}\]])', r'\1', json_str)
+                        json_str_clean = re.sub(r'//.*$', '', json_str_clean, flags=re.MULTILINE)
+                        try:
+                            results = json.loads(json_str_clean)
+                        except json.JSONDecodeError:
+                            print(f"  警告：批次 {batch_start // batch_size + 1} JSON 解析仍失败")
+                            print(f"  原始内容: {cleaned_content[:200]}...")
+                            return valuable_indices
+
                     for item in results:
                         idx = item.get("index", -1)
                         if idx >= 0 and item.get("is_valuable"):
@@ -443,8 +465,8 @@ async def analyze_pain_points(posts: List[Dict]) -> Dict:
     if not api_key:
         raise ValueError("OPENAI_API_KEY not set in environment")
 
-    base_url = os.environ.get("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
-    model = os.environ.get("OPENAI_MODEL", "gemini-3-flash-preview")
+    base_url = os.environ.get("OPENAI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai/"
+    model = os.environ.get("OPENAI_MODEL") or "gemini-3-flash-preview"
 
     client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
@@ -456,22 +478,16 @@ async def analyze_pain_points(posts: List[Dict]) -> Dict:
 
     print(f"\n正在将 {len(posts)} 条帖子发送给 LLM 进行分析...")
 
-    # 速率限制：请求前等待
-    await rate_limiter.acquire()
-    print(f"  当前 RPM: {rate_limiter.get_current_rpm():.1f}")
-
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-    )
+    # 使用统一的降级策略调用 LLM
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+    content = await _try_call_llm_async(client, messages, model=model)
 
     # Parse the JSON response
     import json
     try:
-        content = response.choices[0].message.content
         # Find JSON block
         start = content.find("{")
         end = content.rfind("}") + 1
@@ -518,14 +534,31 @@ async def analyze_pain_points(posts: List[Dict]) -> Dict:
         # 标准化产品类型为英文，支持中文和英文输入
         product_type = opp.get("product_type", "other")
         type_map = {
+            # 浏览器插件类
             "浏览器插件": "browser_extension",
             "浏览器插件需求": "browser_extension",
-            "web_app": "browser_extension",
+            "Chrome 扩展": "browser_extension",
+            "Chrome扩展": "browser_extension",
+            "浏览器扩展": "browser_extension",
+            "油猴脚本": "browser_extension",
+            "书签工具": "browser_extension",
+
+            # Web 应用类
+            "web_app": "web_app",  # 移除错误映射到 browser_extension
             "Web应用": "web_app",
             "独立Web应用": "web_app",
+            "独立 Web 应用": "web_app",
+            "Web App": "web_app",
+            "轻量级 Web 应用": "web_app",
+
+            # SaaS 类
             "saas": "saas",
             "SaaS": "saas",
+            "SaaS服务": "saas",
+
+            # 其他
             "其他": "other",
+            "other": "other",
         }
         opp["product_type"] = type_map.get(product_type, "other")
 

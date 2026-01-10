@@ -37,6 +37,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          OPENAI_FILTER_MODEL: ${{ secrets.OPENAI_FILTER_MODEL }}
 
           # Email Configuration (optional - comment out if not using email)
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
